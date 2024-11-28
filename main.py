@@ -19,24 +19,32 @@ def get_template_placeholders(template):
     pattern = r'<([^>]+)>'
     return set(re.findall(pattern, template))
 
-def process_template(template_path, csv_path, mapping):
-    # Read CSV file
+def process_template(template_path, subject_template_path, csv_path, body_mapping, subject_mapping, email_column):
     with open(csv_path, 'r', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         rows = list(reader)
 
-    # Read template file
     with open(template_path, 'r', encoding='utf-8') as template_file:
-        template = template_file.read()
+        body_template = template_file.read()
+        
+    with open(subject_template_path, 'r', encoding='utf-8') as subject_file:
+        subject_template = subject_file.read()
 
-    # Process each row
     results = []
     for row in rows:
-        # First process spintax
-        text = parse_spintax(template)
-        # Then replace placeholders
-        text = replace_placeholders(text, row, mapping)
-        results.append(text)
+        # Process subject with spintax
+        subject = parse_spintax(subject_template)
+        subject = replace_placeholders(subject, row, subject_mapping)
+        
+        # Process body with spintax
+        body = parse_spintax(body_template)
+        body = replace_placeholders(body, row, body_mapping)
+        
+        results.append({
+            'recipient_email': row[email_column],
+            'subject': subject,
+            'body': body
+        })
 
     return results
 

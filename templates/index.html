@@ -14,6 +14,28 @@
     <div class="container mt-5">
         <h2 class="text-center mb-4">Template Processor</h2>
         
+        <div class="row justify-content-center mb-5">
+            <div class="col-md-6">
+                <h3>Manage Zoho Accounts</h3>
+                <form id="zohoAccountForm" class="mb-3">
+                    <div class="mb-3">
+                        <label class="form-label">Sender Name</label>
+                        <input type="text" class="form-control" name="sender_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">App Password</label>
+                        <input type="password" class="form-control" name="app_password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Account</button>
+                </form>
+                <div id="zohoAccountsList"></div>
+            </div>
+        </div>
+
         <div class="row justify-content-center">
             <div class="col-md-6">
                 <form id="uploadForm" class="mb-4">
@@ -25,6 +47,10 @@
                         <label for="csv" class="form-label">CSV File</label>
                         <input type="file" class="form-control" id="csv" name="csv" accept=".csv" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="subject_template" class="form-label">Subject Template File (txt)</label>
+                        <input type="file" class="form-control" id="subject_template" name="subject_template" accept=".txt" required>
+                    </div>
                     <button type="submit" class="btn btn-primary">Upload Files</button>
                 </form>
             </div>
@@ -32,6 +58,12 @@
 
         <div id="mappingContainer" class="mapping-container d-none">
             <h4 class="text-center mb-3">Map Placeholders to CSV Columns</h4>
+            <div class="mb-3">
+                <label class="form-label">Select Email Column:</label>
+                <select class="form-select" id="emailColumnSelect">
+                    <!-- Will be populated dynamically -->
+                </select>
+            </div>
             <div id="mappingFields"></div>
             <button id="processButton" class="btn btn-success mt-3">Process Files</button>
         </div>
@@ -62,25 +94,51 @@
         function showMapping(data) {
             const container = document.getElementById('mappingContainer');
             const fieldsContainer = document.getElementById('mappingFields');
+            const emailSelect = document.getElementById('emailColumnSelect');
             container.classList.remove('d-none');
             
-            fieldsContainer.innerHTML = data.placeholders.map(placeholder => `
+            // Populate email column dropdown
+            emailSelect.innerHTML = data.csv_columns.map(col => 
+                `<option value="${col}">${col}</option>`
+            ).join('');
+            
+            // Create separate containers for body and subject placeholders
+            const bodyPlaceholders = data.body_placeholders || [];
+            const subjectPlaceholders = data.subject_placeholders || [];
+            
+            fieldsContainer.innerHTML = `
+                <h5>Subject Template Mappings:</h5>
+                ${subjectPlaceholders.map(placeholder => createMappingSelect(placeholder, data.csv_columns, 'subject')).join('')}
+                
+                <h5 class="mt-4">Body Template Mappings:</h5>
+                ${bodyPlaceholders.map(placeholder => createMappingSelect(placeholder, data.csv_columns, 'body')).join('')}
+            `;
+        }
+
+        function createMappingSelect(placeholder, columns, type) {
+            return `
                 <div class="mb-3">
                     <label class="form-label">Map '${placeholder}' to:</label>
-                    <select class="form-select" data-placeholder="${placeholder}">
-                        ${data.csv_columns.map(col => 
-                            `<option value="${col}">${col}</option>`
-                        ).join('')}
+                    <select class="form-select" data-placeholder="${placeholder}" data-type="${type}">
+                        ${columns.map(col => `<option value="${col}">${col}</option>`).join('')}
                     </select>
                 </div>
-            `).join('');
+            `;
         }
 
         document.getElementById('processButton').addEventListener('click', async () => {
-            const mapping = {};
+            const bodyMapping = {};
+            const subjectMapping = {};
+            
             document.querySelectorAll('[data-placeholder]').forEach(select => {
-                mapping[select.dataset.placeholder] = select.value;
+                if (select.dataset.type === 'subject') {
+                    subjectMapping[select.dataset.placeholder] = select.value;
+                } else {
+                    bodyMapping[select.dataset.placeholder] = select.value;
+                }
             });
+
+            const emailColumn = document.getElementById('emailColumnSelect').value;
 
             try {
                 const response = await fetch('/process', {
@@ -90,27 +148,81 @@
                     },
                     body: JSON.stringify({
                         template_path: fileData.template_path,
+                        subject_template_path: fileData.subject_template_path,
                         csv_path: fileData.csv_path,
-                        mapping: mapping
+                        body_mapping: bodyMapping,
+                        subject_mapping: subjectMapping,
+                        email_column: emailColumn
                     })
                 });
 
-                if (!response.ok) throw new Error('Processing failed');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Processing failed');
+                }
 
-                // Trigger file download
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = response.headers.get('content-disposition').split('filename=')[1];
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                a.remove();
+                const result = await response.json();
+                alert(`Emails sent successfully!\nSuccess: ${result.success_count}\nFailed: ${result.failed_count}`);
             } catch (error) {
                 alert('Error processing files: ' + error.message);
             }
         });
+
+        async function loadZohoAccounts() {
+            const response = await fetch('/zoho-accounts');
+            const accounts = await response.json();
+            const container = document.getElementById('zohoAccountsList');
+            
+            container.innerHTML = accounts.map(acc => `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-2 text-muted">${acc.sender_name}</h6>
+                        <p class="card-text">${acc.email}</p>
+                        <button 
+                            onclick="toggleAccount(${acc.id})" 
+                            class="btn btn-sm ${acc.is_active ? 'btn-danger' : 'btn-success'}">
+                            ${acc.is_active ? 'Deactivate' : 'Activate'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function toggleAccount(id) {
+            try {
+                await fetch(`/zoho-accounts/${id}/toggle`, { method: 'POST' });
+                await loadZohoAccounts();
+            } catch (error) {
+                alert('Error toggling account status: ' + error.message);
+            }
+        }
+
+        document.getElementById('zohoAccountForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            try {
+                await fetch('/zoho-accounts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: formData.get('email'),
+                        app_password: formData.get('app_password'),
+                        sender_name: formData.get('sender_name')
+                    })
+                });
+                
+                e.target.reset();
+                await loadZohoAccounts();
+            } catch (error) {
+                alert('Error adding Zoho account: ' + error.message);
+            }
+        });
+
+        // Load accounts on page load
+        loadZohoAccounts();
     </script>
 </body>
 </html> 

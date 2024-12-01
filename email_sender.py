@@ -14,3 +14,14 @@ def send_email(sender_email, sender_password, sender_name, recipient_email, subj
     server.login(sender_email, sender_password)
     server.sendmail(sender_email, [recipient_email], msg.as_string())
     server.quit() 
+
+def verify_email_credentials(sender_email, sender_password):
+    try:
+        server = smtplib.SMTP('smtp.zoho.in', 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Verification failed for {sender_email}: {str(e)}")
+        return False 

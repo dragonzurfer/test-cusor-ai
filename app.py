@@ -7,7 +7,7 @@ import json
 from main import get_template_placeholders, process_template
 import csv
 from models import Session, ZohoAccount
-from email_sender import send_email
+from email_sender import send_email, verify_email_credentials
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -181,6 +181,50 @@ def process_files():
         'success_count': success_count,
         'failed_count': failed_count
     })
+
+@app.route('/verify-accounts', methods=['POST'])
+def verify_accounts():
+    session = Session()
+    try:
+        accounts = session.query(ZohoAccount).all()
+        results = {
+            'verified': 0,
+            'failed': 0,
+            'total': len(accounts)
+        }
+        
+        for account in accounts:
+            is_valid = verify_email_credentials(account.email, account.app_password)
+            if not is_valid and account.is_active:
+                account.is_active = 0
+                results['failed'] += 1
+            elif is_valid:
+                results['verified'] += 1
+        
+        session.commit()
+        return jsonify(results)
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/zoho-accounts/<int:id>', methods=['DELETE'])
+def delete_account(id):
+    session = Session()
+    try:
+        account = session.query(ZohoAccount).get(id)
+        if not account:
+            return jsonify({'error': 'Account not found'}), 404
+            
+        session.delete(account)
+        session.commit()
+        return jsonify({'message': 'Account deleted successfully'})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'error': str(e)}), 400
+    finally:
+        session.close()
 
 if __name__ == '__main__':
     app.run(debug=True) 

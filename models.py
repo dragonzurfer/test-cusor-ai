@@ -14,5 +14,6 @@ class ZohoAccount(Base):
     app_password = Column(String, nullable=False)
     sender_name = Column(String, nullable=False)
     is_active = Column(Integer, default=1)
+    signature = Column(String, nullable=False, default='Regards\n{sender_name}\nPartnership Manager\nBlackBurn Media')
 
 Base.metadata.create_all(engine) 

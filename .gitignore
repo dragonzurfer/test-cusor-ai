@@ -1,6 +1,4 @@
 __pycache__
-uploads/*.zip
-uploads/*.csv
-uploads/*.txt
+uploads
 *.db
 

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Email Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .email-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .email-preview {
+            cursor: pointer;
+        }
+        .email-preview:hover {
+            background-color: #f8f9fa;
+        }
+        .selected {
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center mb-4">Email Viewer</h2>
+
+        <!-- CRM Configuration Modal -->
+        <div class="modal fade" id="configModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">ZOHO CRM Configuration</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="crmConfigForm">
+                            <div class="mb-3">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" class="form-control" name="client_id" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Client Secret</label>
+                                <input type="text" class="form-control" name="client_secret" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Redirect URI</label>
+                                <input type="text" class="form-control" name="redirect_uri" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Configuration</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="row">
+            <!-- Account List -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Accounts</h5>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#configModal">
+                            Configure CRM
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="accountsList" class="list-group">
+                            <!-- Accounts will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email List -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Emails</h5>
+                    </div>
+                    <div class="card-body email-list" id="emailsList">
+                        <!-- Emails will be listed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Email Content -->
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Email Content</h5>
+                    </div>
+                    <div class="card-body" id="emailContent">
+                        <!-- Email content will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentAccount = null;
+
+        async function loadAccounts() {
+            const response = await fetch('/zoho-accounts');
+            const accounts = await response.json();
+            const container = document.getElementById('accountsList');
+            
+            container.innerHTML = accounts.map(acc => `
+                <a href="#" class="list-group-item list-group-item-action" 
+                   onclick="selectAccount(${acc.id}, '${acc.email}')">
+                    ${acc.email}
+                </a>
+            `).join('');
+        }
+
+        async function selectAccount(id, email) {
+            currentAccount = { id, email };
+            
+            try {
+                const response = await fetch(`/emails/${id}`);
+                const data = await response.json();
+                
+                if (data.needs_auth) {
+                    window.location.href = `/zoho-auth/${id}`;
+                    return;
+                }
+                
+                displayEmails(data);
+            } catch (error) {
+                alert('Error loading emails: ' + error.message);
+            }
+        }
+
+        function displayEmails(emails) {
+            const container = document.getElementById('emailsList');
+            container.innerHTML = emails.map(email => `
+                <div class="email-preview p-2 border-bottom" onclick="showEmailContent(${email.id})">
+                    <div class="fw-bold">${email.subject}</div>
+                    <div class="text-muted small">${email.from}</div>
+                    <div class="text-muted small">${email.date}</div>
+                </div>
+            `).join('');
+        }
+
+        async function showEmailContent(emailId) {
+            try {
+                const response = await fetch(`/email/${emailId}`);
+                const email = await response.json();
+                
+                document.getElementById('emailContent').innerHTML = `
+                    <h5>${email.subject}</h5>
+                    <div class="text-muted mb-3">
+                        <div>From: ${email.from}</div>
+                        <div>To: ${email.to}</div>
+                        <div>Date: ${email.date}</div>
+                    </div>
+                    <div class="email-body">${email.body}</div>
+                `;
+            } catch (error) {
+                alert('Error loading email content: ' + error.message);
+            }
+        }
+
+        document.getElementById('crmConfigForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            try {
+                const response = await fetch('/crm-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        client_id: formData.get('client_id'),
+                        client_secret: formData.get('client_secret'),
+                        redirect_uri: formData.get('redirect_uri')
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to save configuration');
+                
+                bootstrap.Modal.getInstance(document.getElementById('configModal')).hide();
+                alert('Configuration saved successfully');
+            } catch (error) {
+                alert('Error saving configuration: ' + error.message);
+            }
+        });
+
+        // Load accounts when page loads
+        loadAccounts();
+    </script>
+</body>
+</html> 

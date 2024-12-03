@@ -10,11 +10,11 @@ def can_send_email(account):
         return True
     
     time_since_last_email = datetime.now() - account.last_email_sent
-    return time_since_last_email >= timedelta(minutes=5)
+    return time_since_last_email >= timedelta(minutes=1)
 
 def send_email(sender_email, sender_password, sender_name, recipient_email, subject, body, account=None, session=None):
     if account and not can_send_email(account):
-        wait_time = 5 * 60 - (datetime.now() - account.last_email_sent).total_seconds()
+        wait_time = 60 - (datetime.now() - account.last_email_sent).total_seconds()
         if wait_time > 0:
             time.sleep(wait_time)
     

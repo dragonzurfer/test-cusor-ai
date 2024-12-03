@@ -144,38 +144,27 @@ def process_files():
     if not active_accounts:
         return jsonify({'error': 'No active Zoho accounts found'}), 400
 
-    # Send emails using rotating accounts
-    current_account_index = 0
     success_count = 0
     failed_count = 0
-
-    # First prepare all the account assignments
-    email_tasks = []
+    
+    # Send emails using rotating accounts with rate limiting
     for i, result in enumerate(results):
         account = active_accounts[i % len(active_accounts)]
-        email_tasks.append({
-            'sender_email': account.email,
-            'sender_password': account.app_password,
-            'sender_name': account.sender_name,
-            'recipient_email': result['recipient_email'],
-            'subject': result['subject'],
-            'body': result['body']
-        })
-
-    # Send emails in parallel using thread pool
-    def send_email_task(task):
         try:
-            send_email(**task)
-            return True
+            send_email(
+                sender_email=account.email,
+                sender_password=account.app_password,
+                sender_name=account.sender_name,
+                recipient_email=result['recipient_email'],
+                subject=result['subject'],
+                body=result['body'],
+                account=account,
+                session=session
+            )
+            success_count += 1
         except Exception as e:
             print(f"Failed to send email: {str(e)}")
-            return False
-
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        results = list(executor.map(send_email_task, email_tasks))
-    
-    success_count = sum(1 for r in results if r)
-    failed_count = sum(1 for r in results if not r)
+            failed_count += 1
 
     return jsonify({
         'success_count': success_count,
